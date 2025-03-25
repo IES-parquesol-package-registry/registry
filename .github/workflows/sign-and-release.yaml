@@ -1,57 +1,64 @@
-name: Sign registry and publish
-run-name: Sign registry and publish
-on: 
+name: Auto Release with Version Bump
+
+on:
   push:
     branches:
       - main
-permissions: write-all
+
 jobs:
-  Explore-GitHub-Actions:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository code
+      - name: Checkout repository with tags
         uses: actions/checkout@v4
-     
-      - name: Install registry-signer
-        run: curl -s https://api.github.com/repos/IES-parquesol-package-registry/registry-signer/releases/latest | jq -r '.assets[0].browser_download_url' | xargs -I {} curl -L -o registry-signer {}
-      
-      - name: make registry-signer executable
-        run: chmod +x registry-signer
-        
-      - name: sign the registry file
-        run: ./registry-signer --file index.json --sign ${{ secrets.SIGNING_KEY }}
-        
-      - name: Calcular nueva versión
-        id: version
+        with:
+          fetch-depth: 0
+
+      - name: Bump version in index.json
+        id: bump
         run: |
-          # Obtener el último tag, si no existe, se usa v0.0.0
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Último tag: $LAST_TAG"
-          # Eliminar la "v" y separar versión
-          VERSION=${LAST_TAG#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          # Leer la versión actual desde index.json
+          CURRENT_VERSION=$(jq -r '.version' index.json)
+          echo "Current version: $CURRENT_VERSION"
+          # Quitar la "v" para trabajar solo con números
+          VERSION_NUM=${CURRENT_VERSION#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
           # Incrementar la parte de parche
-          PATCH=$((PATCH + 1))
-          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
-          echo "Nueva versión: $NEW_TAG"
-          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          
-      - name: Crear nuevo tag y pushearlo
-        env:
-          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+          echo "New version: $NEW_VERSION"
+          # Actualizar el archivo index.json con la nueva versión
+          jq --arg new_version "$NEW_VERSION" '.version = $new_version' index.json > tmp.json && mv tmp.json index.json
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$NEW_TAG"
-          git push origin "$NEW_TAG"
-          
-      - name: Crear GitHub Release
+          git add index.json
+          # Solo se hace commit si hay cambios
+          git diff --cached --quiet || git commit -m "Bump version to ${{ steps.bump.outputs.new_version }}"
+          git push origin HEAD:main
+
+      - name: Create new tag
+        id: tag
+        run: |
+          NEW_VERSION=${{ steps.bump.outputs.new_version }}
+          # Verificar si el tag ya existe
+          if git rev-parse "$NEW_VERSION" >/dev/null 2>&1; then
+            echo "Tag $NEW_VERSION already exists. Abortando."
+            exit 1
+          fi
+          git tag "$NEW_VERSION"
+          git push origin "$NEW_VERSION"
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.new_tag }}
-          name: "Release ${{ steps.version.outputs.new_tag }}"
+          tag_name: ${{ steps.bump.outputs.new_version }}
+          name: "Release ${{ steps.bump.outputs.new_version }}"
+          body: "Release automática. Versión actualizada a ${{ steps.bump.outputs.new_version }}."
           files: |
-            ./index.json
-            ./sign.sig
+            ./registry-signer  # Ajusta la ruta al asset que desees incluir
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
