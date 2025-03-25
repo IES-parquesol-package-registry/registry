@@ -79,6 +79,7 @@ jobs:
           name: "Release ${{ steps.bump.outputs.new_version }}"
           body: "Release automática. Versión actualizada a ${{ steps.bump.outputs.new_version }}."
           files: |
-            ./registry-signer  # Ajusta la ruta al asset que desees incluir
+            ./index.json
+            ./sign.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
