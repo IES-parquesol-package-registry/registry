@@ -23,61 +23,40 @@ jobs:
           application_id: ${{ vars.APP_ID }}
           application_private_key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Bump version in index.json
-        id: bump
+      - name: Read version from index.json
+        id: read_version
         run: |
-          # Leer la versión actual desde index.json
-          CURRENT_VERSION=$(jq -r '.version' index.json)
-          echo "Current version: $CURRENT_VERSION"
-          # Quitar la "v" para trabajar solo con números
-          VERSION_NUM=${CURRENT_VERSION#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
-          # Incrementar la parte de parche
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
-          echo "New version: $NEW_VERSION"
-          # Actualizar el archivo index.json con la nueva versión
-          jq --arg new_version "$NEW_VERSION" '.version = $new_version' index.json > tmp.json && mv tmp.json index.json
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          VERSION=$(jq -r '.version' index.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Actualizar repositorio vía API
-        id: update_repo
+      - name: Install registry-signer
         run: |
-          TOKEN=${{ steps.generate_token.outputs.token }}
-          REPO=${{ github.repository }}
-          MAIN_BRANCH=main
-          FILE_PATH=index.json
-          COMMIT_MESSAGE="Incrementar versión a $NEW_VERSION"
-          COMMITTER_NAME="github-actions[bot]"
-          COMMITTER_EMAIL="github-actions[bot]@users.noreply.github.com"
+          curl -s https://api.github.com/repos/IES-parquesol-package-registry/registry-signer/releases/latest | jq -r '.assets[0].browser_download_url' | xargs -I {} curl -L -o registry-signer {}
 
-          MAIN_COMMIT=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/$REPO/branches/$MAIN_BRANCH" | jq -r .commit.sha)
-          TREE_SHA=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/$REPO/commit/$MAIN_COMMIT" | jq -r .commit.tree.sha)
-          FILE_CONTENT=$(cat $FILE_PATH)
-          BLOB_ID=$(curl -s -H "Authorization: Bearer $TOKEN" -X POST "https://api.github.com/repos/$REPO/git/blobs" -d "{\"content\": \"$FILE_CONTENT\", \"encoding\": \"utf-8\"}" | jq -r .sha)
-          NEW_TREE=$(curl -s -H "Authorization: Bearer $TOKEN" -X POST "https://api.github.com/repos/$REPO/git/trees" -d "{\"base_tree\": \"$TREE_SHA\", \"tree\": [ {\"path\": \"$FILE_PATH\", \"mode\": \"100644\", \"type\": \"blob\", \"sha\": \"$BLOB_ID\"} ]}" | jq -r .sha)
-          COMMIT_ID=$(curl -s -H "Authorization: Bearer $TOKEN" -X POST "https://api.github.com/repos/$REPO/git/commit" -d "{\"message\": \"$COMMIT_MESSAGE\", \"tree\": \"$NEW_TREE\", \"parents\": [\"$MAIN_COMMIT\"], \"committer\": {\"name\": \"$COMMITTER_NAME\", \"email\": \"$COMMITTER_EMAIL\"}, \"author\": {\"name\": \"$COMMITTER_NAME\", \"email\": \"$COMMITTER_EMAIL\"}} " | jq -r .sha)
-          curl -s -H "Authorization: Bearer $TOKEN" -X PATCH "https://api.github.com/repos/$REPO/branches/$MAIN_BRANCH" -d "{\"sha\": \"$COMMIT_ID\"}"
-          echo "commit_id=$COMMIT_ID" >> $GITHUB_OUTPUT
+      - name: Make registry-signer executable
+        run: chmod +x registry-signer
+
+      - name: Sign the registry file
+        run: ./registry-signer --file index.json --sign ${{ secrets.SIGNING_KEY }}
 
       - name: Create new tag
         id: tag
         run: |
-          NEW_VERSION=${{ steps.bump.outputs.new_version }}
+          VERSION=${{ steps.read_version.outputs.version }}
           # Verificar si el tag ya existe
-          if git rev-parse "$NEW_VERSION" >/dev/null 2>&1; then
-            echo "Tag $NEW_VERSION already exists. Abortando."
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists. Abortando."
             exit 1
           fi
-          git tag "$NEW_VERSION"
-          git push origin "$NEW_VERSION"
+          git tag "$VERSION"
+          git push origin "$VERSION"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.bump.outputs.new_version }}
-          name: "Release ${{ steps.bump.outputs.new_version }}"
-          body: "Release automática. Versión actualizada a ${{ steps.bump.outputs.new_version }}."
+          tag_name: ${{ steps.read_version.outputs.version }}
+          name: "Release ${{ steps.read_version.outputs.version }}"
+          body: "Release automática. Versión actualizada a ${{ steps.read_version.outputs.version }}."
           files: |
             ./index.json
             ./sign.sig
