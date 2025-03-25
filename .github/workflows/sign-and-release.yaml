@@ -16,6 +16,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Generate GitHub App Token
+        id: generate_token
+        uses: peter-murray/workflow-application-token-action@v3
+        with:
+          application_id: ${{ vars.APP_ID }}
+          application_private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Bump version in index.json
         id: bump
         run: |
@@ -38,8 +45,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add index.json
-          # Solo se hace commit si hay cambios
-          git diff --cached --quiet || git commit -m "Bump version to ${{ steps.bump.outputs.new_version }}"
+          git diff --cached --quiet || git commit -m "Bump version to $NEW_VERSION"
+          git remote set-url origin https://x-access-token:${{ steps.generate_token.outputs.token }}@github.com/${{ github.repository }}
           git push origin HEAD:main
 
       - name: Create new tag
