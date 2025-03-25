@@ -50,7 +50,6 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.new_tag }}
           name: "Release ${{ steps.version.outputs.new_tag }}"
-          body: "Release automática generada al incrementar el parche."
           files: |
             ./index.json
             ./sign.sig
