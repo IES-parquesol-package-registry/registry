@@ -40,14 +40,25 @@ jobs:
           jq --arg new_version "$NEW_VERSION" '.version = $new_version' index.json > tmp.json && mv tmp.json index.json
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Commit version bump
+      - name: Actualizar repositorio vía API
+        id: update_repo
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.json
-          git diff --cached --quiet || git commit -m "Bump version to $NEW_VERSION"
-          git remote set-url origin https://x-access-token:${{ steps.generate_token.outputs.token }}@github.com/${{ github.repository }}
-          git push origin HEAD:main
+          TOKEN=${{ steps.generate_token.outputs.token }}
+          REPO=${{ github.repository }}
+          MAIN_BRANCH=main
+          FILE_PATH=index.json
+          COMMIT_MESSAGE="Incrementar versión a $NEW_VERSION"
+          COMMITTER_NAME="github-actions[bot]"
+          COMMITTER_EMAIL="github-actions[bot]@users.noreply.github.com"
+
+          MAIN_COMMIT=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/$REPO/branches/$MAIN_BRANCH" | jq -r .commit.sha)
+          TREE_SHA=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/$REPO/commit/$MAIN_COMMIT" | jq -r .commit.tree.sha)
+          FILE_CONTENT=$(cat $FILE_PATH)
+          BLOB_ID=$(curl -s -H "Authorization: Bearer $TOKEN" -X POST "https://api.github.com/repos/$REPO/git/blobs" -d "{\"content\": \"$FILE_CONTENT\", \"encoding\": \"utf-8\"}" | jq -r .sha)
+          NEW_TREE=$(curl -s -H "Authorization: Bearer $TOKEN" -X POST "https://api.github.com/repos/$REPO/git/trees" -d "{\"base_tree\": \"$TREE_SHA\", \"tree\": [ {\"path\": \"$FILE_PATH\", \"mode\": \"100644\", \"type\": \"blob\", \"sha\": \"$BLOB_ID\"} ]}" | jq -r .sha)
+          COMMIT_ID=$(curl -s -H "Authorization: Bearer $TOKEN" -X POST "https://api.github.com/repos/$REPO/git/commit" -d "{\"message\": \"$COMMIT_MESSAGE\", \"tree\": \"$NEW_TREE\", \"parents\": [\"$MAIN_COMMIT\"], \"committer\": {\"name\": \"$COMMITTER_NAME\", \"email\": \"$COMMITTER_EMAIL\"}, \"author\": {\"name\": \"$COMMITTER_NAME\", \"email\": \"$COMMITTER_EMAIL\"}} " | jq -r .sha)
+          curl -s -H "Authorization: Bearer $TOKEN" -X PATCH "https://api.github.com/repos/$REPO/branches/$MAIN_BRANCH" -d "{\"sha\": \"$COMMIT_ID\"}"
+          echo "commit_id=$COMMIT_ID" >> $GITHUB_OUTPUT
 
       - name: Create new tag
         id: tag
