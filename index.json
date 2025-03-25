@@ -13,7 +13,8 @@
     "python3-pip",
     "software-properties-common",
     "git",
-    "pkg-config"
+    "pkg-config",
+    "libssl-dev"
   ],
   "apt-repos": [
     "ppa:libreoffice",
