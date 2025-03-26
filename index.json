@@ -1,23 +1,22 @@
 {
-  "version": "v1.0.2",
+  "version": "v1.0.3",
   "apt": [
     "curl",
     "wget",
     "libreoffice",
     "build-essential",
     "vim",
-    "gimp",
     "librecad",
     "flatpak",
     "python3",
     "python3-pip",
     "software-properties-common",
     "git",
-    "pkg-config"
+    "pkg-config",
+    "libssl-dev"
   ],
   "apt-repos": [
-    "ppa:libreoffice",
-    "ppa:otto-kesselgulasch/gimp"
+    "ppa:libreoffice"
   ],
   "flatpak": [
     "cc.arduino.IDE2",
