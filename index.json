@@ -13,18 +13,22 @@
     "software-properties-common",
     "git",
     "pkg-config",
-    "libssl-dev"
+    "libssl-dev",
+    "audacity"
   ],
   "apt-repos": [
-    "ppa:libreoffice"
+    "ppa:libreoffice",
+    "ppa:ubuntuhandbook1/audacity"
   ],
   "flatpak": [
     "cc.arduino.IDE2",
-    "one.ablaze.floorp"
+    "one.ablaze.floorp",
+    "org.gimp.GIMP"
   ],
   "snap": [
     "code",
     "clion",
-    "pycharm-educational"
+    "pycharm-educational",
+    "kdenlive"
   ]
 }
